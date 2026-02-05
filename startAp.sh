@@ -29,6 +29,10 @@ source "$SCRIPT_DIR/scripts/logging.sh"
 source "$SCRIPT_DIR/scripts/iptables.sh"
 source "$SCRIPT_DIR/scripts/dns_monitor.sh"
 
+# Background PID tracking
+declare -a BG_PIDS=()
+push_pid() { BG_PIDS+=("$1"); }
+
 # --- CHECKS ---
 sudo lsof -i :53
 nmcli radio
@@ -54,17 +58,20 @@ sudo dnsmasq --conf-file=dnsmasq.conf
 
 sudo hostapd hostapd-test.conf &
 HOSTAPD_PID=$!
+push_pid "$HOSTAPD_PID"
 sleep 2
 
 echo "[DEBUG] Starting DNS monitor..." | tee -a "$LOG_MAIN"
 dns_monitor &
 DNS_MONITOR_PID=$!
+push_pid "$DNS_MONITOR_PID"
 echo "[DEBUG] DNS monitor PID: $DNS_MONITOR_PID" | tee -a "$LOG_MAIN"
 
 sleep 1
 echo "[DEBUG] Starting pcap capture..." | tee -a "$LOG_MAIN"
 sudo tshark -i wlan0 -w /tmp/capture.pcap &
 TSHARK_PID=$!
+push_pid "$TSHARK_PID"
 
 cleanup() {
     # Prevent cleanup from running multiple times
@@ -79,14 +86,17 @@ cleanup() {
     echo "" | tee -a "$LOG_MAIN"
     echo "[SESSION] Stopping at $(date)" | tee -a "$LOG_MAIN"
 
-    sudo kill $HOSTAPD_PID 2>/dev/null
-    sudo kill $TSHARK_PID 2>/dev/null
-    sudo kill $DNS_MONITOR_PID 2>/dev/null
-    sudo pkill -f "tshark -i $INTERFACE -l -Y" 2>/dev/null
+    # Kill tracked background PIDs
+    for pid in "${BG_PIDS[@]:-}"; do
+        sudo kill "$pid" 2>/dev/null || true
+    done
+    # Extra safety: kill any remaining tshark processes for the interface
+    sudo pkill -f "tshark -i $INTERFACE -l -Y" 2>/dev/null || true
 
-    wait $HOSTAPD_PID 2>/dev/null
-    wait $TSHARK_PID 2>/dev/null
-    wait $DNS_MONITOR_PID 2>/dev/null
+    # Wait for all tracked background PIDs
+    for pid in "${BG_PIDS[@]:-}"; do
+        wait "$pid" 2>/dev/null || true
+    done
 
     sudo chmod 644 /tmp/capture.pcap 2>/dev/null
     if [ -f /tmp/capture.pcap ]; then

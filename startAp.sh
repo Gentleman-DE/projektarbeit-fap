@@ -45,23 +45,9 @@ is_whitelisted() {
     return 1
 }
 
-log_blocked() {
-    local domain="$1"
-    if [[ -z "${BLOCKED_DOMAINS[$domain]}" ]]; then
-        BLOCKED_DOMAINS["$domain"]=1
-        echo "$(date +%H:%M:%S) $domain" >> "$LOG_BLOCKED"
-        echo "[BLOCKED] $domain" | tee -a "$LOG_MAIN"
-    fi
-}
-
-log_allowed_domain() {
-    local domain="$1"
-    if [[ -z "${ALLOWED_DOMAINS[$domain]}" ]]; then
-        ALLOWED_DOMAINS["$domain"]=1
-        echo "$(date +%H:%M:%S) $domain" >> "$LOG_ALLOWED_DOMAINS"
-        echo "[ALLOWED] $domain" | tee -a "$LOG_MAIN"
-    fi
-}
+# Load logging helper functions
+source "./scripts/logging.sh"
+source "./scripts/iptables.sh"
 
 add_iptables_rule() {
     local ip="$1"
@@ -120,31 +106,7 @@ dns_monitor() {
     echo "[DNS-MONITOR] tshark exited" | tee -a "$LOG_MAIN"
 }
 
-reset_iptables() {
-    echo "[CLEANUP] Resetting iptables rules..." | tee -a "$LOG_MAIN"
-    
-    sudo iptables -F
-    sudo iptables -X
-    sudo iptables -t nat -F
-    sudo iptables -t nat -X
-    sudo iptables -t mangle -F
-    sudo iptables -t mangle -X
-    sudo iptables -P INPUT ACCEPT
-    sudo iptables -P OUTPUT ACCEPT
-    sudo iptables -P FORWARD ACCEPT
-    
-    sudo ip6tables -F
-    sudo ip6tables -X
-    sudo ip6tables -t nat -F
-    sudo ip6tables -t nat -X
-    sudo ip6tables -t mangle -F
-    sudo ip6tables -t mangle -X
-    sudo ip6tables -P INPUT ACCEPT
-    sudo ip6tables -P OUTPUT ACCEPT
-    sudo ip6tables -P FORWARD ACCEPT
-    
-    echo "[CLEANUP] iptables reset to default ACCEPT" | tee -a "$LOG_MAIN"
-}
+# reset_iptables is provided by ./scripts/iptables.sh
 
 # --- CHECKS ---
 sudo lsof -i :53
@@ -164,38 +126,7 @@ sudo ip link set wlan0 up
 sudo ip addr add 10.10.0.1/24 dev wlan0
 
 # --- IPTABLES FIREWALL SETUP ---
-echo "[DEBUG] Flushing existing iptables rules..." | tee -a "$LOG_MAIN"
-sudo iptables -F
-sudo iptables -X
-sudo iptables -t nat -F
-sudo iptables -t nat -X
-sudo iptables -t mangle -F
-sudo iptables -t mangle -X
-
-sudo ip6tables -F
-sudo ip6tables -X
-sudo ip6tables -t nat -F
-sudo ip6tables -t nat -X
-sudo ip6tables -t mangle -F
-sudo ip6tables -t mangle -X
-
-sudo iptables -P INPUT ACCEPT
-sudo iptables -P OUTPUT ACCEPT
-sudo iptables -P FORWARD DROP
-
-sudo ip6tables -P INPUT ACCEPT
-sudo ip6tables -P OUTPUT ACCEPT
-sudo ip6tables -P FORWARD DROP
-
-echo "[DEBUG] Default policy: INPUT/OUTPUT ACCEPT, FORWARD DROP" | tee -a "$LOG_MAIN"
-
-sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-sudo ip6tables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-
-echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward
-echo 1 | sudo tee /proc/sys/net/ipv6/conf/all/forwarding
-
-echo "[DEBUG] IPTABLES firewall setup complete." | tee -a "$LOG_MAIN"
+setup_iptables
 
 # --- START SERVICES ---
 sudo dnsmasq --conf-file=dnsmasq.conf
@@ -234,13 +165,7 @@ cleanup() {
         echo "[SESSION] capture.pcap copied to session folder" | tee -a "$LOG_MAIN"
     fi
     
-    echo "" | tee -a "$LOG_MAIN"
-    echo "=== SESSION SUMMARY ===" | tee -a "$LOG_MAIN"
-    echo "Blocked domains: $(wc -l < "$LOG_BLOCKED")" | tee -a "$LOG_MAIN"
-    echo "Allowed domains: $(wc -l < "$LOG_ALLOWED_DOMAINS")" | tee -a "$LOG_MAIN"
-    echo "Allowed IPv4: $(wc -l < "$LOG_ALLOWED_IPV4")" | tee -a "$LOG_MAIN"
-    echo "Allowed IPv6: $(wc -l < "$LOG_ALLOWED_IPV6")" | tee -a "$LOG_MAIN"
-    echo "=======================" | tee -a "$LOG_MAIN"
+    log_session_summary
     
     reset_iptables
     

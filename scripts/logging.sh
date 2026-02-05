@@ -26,9 +26,31 @@ log_allowed_domain() {
 log_session_summary() {
     echo "" | tee -a "$LOG_MAIN"
     echo "=== SESSION SUMMARY ===" | tee -a "$LOG_MAIN"
-    echo "Blocked domains: $(wc -l < \"$LOG_BLOCKED\")" | tee -a "$LOG_MAIN"
-    echo "Allowed domains: $(wc -l < \"$LOG_ALLOWED_DOMAINS\")" | tee -a "$LOG_MAIN"
-    echo "Allowed IPv4: $(wc -l < \"$LOG_ALLOWED_IPV4\")" | tee -a "$LOG_MAIN"
-    echo "Allowed IPv6: $(wc -l < \"$LOG_ALLOWED_IPV6\")" | tee -a "$LOG_MAIN"
+
+    if [[ -f "$LOG_BLOCKED" ]]; then
+        blocked_count=$(wc -l < "$LOG_BLOCKED")
+    else
+        blocked_count=0
+    fi
+    if [[ -f "$LOG_ALLOWED_DOMAINS" ]]; then
+        allowed_count=$(wc -l < "$LOG_ALLOWED_DOMAINS")
+    else
+        allowed_count=0
+    fi
+    if [[ -f "$LOG_ALLOWED_IPV4" ]]; then
+        ipv4_count=$(wc -l < "$LOG_ALLOWED_IPV4")
+    else
+        ipv4_count=0
+    fi
+    if [[ -f "$LOG_ALLOWED_IPV6" ]]; then
+        ipv6_count=$(wc -l < "$LOG_ALLOWED_IPV6")
+    else
+        ipv6_count=0
+    fi
+
+    echo "Blocked domains: $blocked_count" | tee -a "$LOG_MAIN"
+    echo "Allowed domains: $allowed_count" | tee -a "$LOG_MAIN"
+    echo "Allowed IPv4: $ipv4_count" | tee -a "$LOG_MAIN"
+    echo "Allowed IPv6: $ipv6_count" | tee -a "$LOG_MAIN"
     echo "=======================" | tee -a "$LOG_MAIN"
 }

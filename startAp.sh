@@ -1,9 +1,12 @@
 #!/bin/bash
 
-TEMPLATE_FILE="./template.txt"
+# Resolve script directory early so relative paths are based on script location
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+TEMPLATE_FILE="$SCRIPT_DIR/template.txt"
 INTERFACE="wlan0"
 
-SESSION_DIR="./sessions/$(date +%Y%m%d_%H%M%S)"
+SESSION_DIR="$SCRIPT_DIR/sessions/$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$SESSION_DIR"
 
 LOG_BLOCKED="$SESSION_DIR/blocked_domains.log"
@@ -22,10 +25,10 @@ declare -A ALLOWED_DOMAINS
 declare -A BLOCKED_DOMAINS
 declare -A WHITELIST
 
-# Load logging helper functions
-source "./scripts/logging.sh"
-source "./scripts/iptables.sh"
-source "./scripts/dns_monitor.sh"
+# Load helper scripts (use absolute path to avoid CWD dependency)
+source "$SCRIPT_DIR/scripts/logging.sh"
+source "$SCRIPT_DIR/scripts/iptables.sh"
+source "$SCRIPT_DIR/scripts/dns_monitor.sh"
 
 add_iptables_rule() {
     local ip="$1"
@@ -88,28 +91,37 @@ TSHARK_PID=$!
 
 # --- CLEANUP ---
 cleanup() {
+    # Prevent cleanup from running multiple times
+    if [[ -n "${CLEANUP_RUNNING-}" ]]; then
+        return
+    fi
+    CLEANUP_RUNNING=1
+
+    # Disable further traps while cleaning up
+    trap - SIGINT SIGTERM EXIT
+
     echo "" | tee -a "$LOG_MAIN"
     echo "[SESSION] Stopping at $(date)" | tee -a "$LOG_MAIN"
-    
+
     sudo kill $HOSTAPD_PID 2>/dev/null
     sudo kill $TSHARK_PID 2>/dev/null
     sudo kill $DNS_MONITOR_PID 2>/dev/null
     sudo pkill -f "tshark -i $INTERFACE -l -Y" 2>/dev/null
-    
+
     wait $HOSTAPD_PID 2>/dev/null
     wait $TSHARK_PID 2>/dev/null
     wait $DNS_MONITOR_PID 2>/dev/null
-    
+
     sudo chmod 644 /tmp/capture.pcap 2>/dev/null
     if [ -f /tmp/capture.pcap ]; then
         cp /tmp/capture.pcap "$SESSION_DIR/capture.pcap"
         echo "[SESSION] capture.pcap copied to session folder" | tee -a "$LOG_MAIN"
     fi
-    
+
     log_session_summary
-    
+
     reset_iptables
-    
+
     echo "[SESSION] Logs saved to: $SESSION_DIR" | tee -a "$LOG_MAIN"
     exit 0
 }

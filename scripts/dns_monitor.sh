@@ -27,6 +27,25 @@ is_whitelisted() {
     return 1
 }
 
+add_iptables_rule() {
+    local ip="$1"
+    local domain="$2"
+    if [[ -z "${ALLOWED_IPS[$ip]}" ]]; then
+        ALLOWED_IPS["$ip"]=1
+        if [[ "$ip" == *":"* ]]; then
+            sudo ip6tables -A FORWARD -i wlan0 -o eth0 -d "$ip" -j ACCEPT
+            sudo ip6tables -A FORWARD -i eth0 -o wlan0 -s "$ip" -m state --state ESTABLISHED,RELATED -j ACCEPT
+            echo "$(date +%H:%M:%S) $ip ($domain)" >> "$LOG_ALLOWED_IPV6"
+            echo "[IP6TABLES] Allowed $ip ($domain)" | tee -a "$LOG_MAIN"
+        else
+            sudo iptables -A FORWARD -i wlan0 -o eth0 -d "$ip" -j ACCEPT
+            sudo iptables -A FORWARD -i eth0 -o wlan0 -s "$ip" -m state --state ESTABLISHED,RELATED -j ACCEPT
+            echo "$(date +%H:%M:%S) $ip ($domain)" >> "$LOG_ALLOWED_IPV4"
+            echo "[IPTABLES] Allowed $ip ($domain)" | tee -a "$LOG_MAIN"
+        fi
+    fi
+}
+
 dns_monitor() {
     load_whitelist
     echo "[DNS-MONITOR] Starting tshark on $INTERFACE..." | tee -a "$LOG_MAIN"

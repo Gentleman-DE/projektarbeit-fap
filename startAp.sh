@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# Resolve script directory early so relative paths are based on script location
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 TEMPLATE_FILE="$SCRIPT_DIR/template.txt"
@@ -25,32 +24,10 @@ declare -A ALLOWED_DOMAINS
 declare -A BLOCKED_DOMAINS
 declare -A WHITELIST
 
-# Load helper scripts (use absolute path to avoid CWD dependency)
+# Load helper scripts
 source "$SCRIPT_DIR/scripts/logging.sh"
 source "$SCRIPT_DIR/scripts/iptables.sh"
 source "$SCRIPT_DIR/scripts/dns_monitor.sh"
-
-add_iptables_rule() {
-    local ip="$1"
-    local domain="$2"
-    if [[ -z "${ALLOWED_IPS[$ip]}" ]]; then
-        ALLOWED_IPS["$ip"]=1
-        if [[ "$ip" == *":"* ]]; then
-            sudo ip6tables -A FORWARD -i wlan0 -o eth0 -d "$ip" -j ACCEPT
-            sudo ip6tables -A FORWARD -i eth0 -o wlan0 -s "$ip" -m state --state ESTABLISHED,RELATED -j ACCEPT
-            echo "$(date +%H:%M:%S) $ip ($domain)" >> "$LOG_ALLOWED_IPV6"
-            echo "[IP6TABLES] Allowed $ip ($domain)" | tee -a "$LOG_MAIN"
-        else
-            sudo iptables -A FORWARD -i wlan0 -o eth0 -d "$ip" -j ACCEPT
-            sudo iptables -A FORWARD -i eth0 -o wlan0 -s "$ip" -m state --state ESTABLISHED,RELATED -j ACCEPT
-            echo "$(date +%H:%M:%S) $ip ($domain)" >> "$LOG_ALLOWED_IPV4"
-            echo "[IPTABLES] Allowed $ip ($domain)" | tee -a "$LOG_MAIN"
-        fi
-    fi
-}
-# DNS monitor provided by ./scripts/dns_monitor.sh
-
-# reset_iptables is provided by ./scripts/iptables.sh
 
 # --- CHECKS ---
 sudo lsof -i :53
@@ -89,7 +66,6 @@ echo "[DEBUG] Starting pcap capture..." | tee -a "$LOG_MAIN"
 sudo tshark -i wlan0 -w /tmp/capture.pcap &
 TSHARK_PID=$!
 
-# --- CLEANUP ---
 cleanup() {
     # Prevent cleanup from running multiple times
     if [[ -n "${CLEANUP_RUNNING-}" ]]; then
